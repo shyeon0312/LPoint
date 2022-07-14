@@ -191,3 +191,136 @@ df_제휴사, df_유통사, LP_wo2, LP_wo3 = df_making(data_dir, save_dir)
 print('\n 소요시간 : ', round(time.time()-start), '초')
 
 
+
+import os
+import pandas as pd
+import numpy as np
+import math
+
+
+
+
+
+def df_고객별(df):
+    newdf = df[['고객번호', 'LPoint', '휴일']]
+    # LPoint ratio
+    유통사_LPoint = newdf[['고객번호', 'LPoint']].groupby('고객번호', as_index=False).mean()
+    유통사_LPoint = 유통사_LPoint.rename(columns = {'LPoint':'lpr'})
+    유통사_LPoint.sort_values(by='lpr', ascending = False)
+    #유통사_LPoint.describe()
+    test = pd.DataFrame()
+    test = 유통사_LPoint.copy()
+    print('LPoint raio 완료')
+    
+    # 유통사 휴일
+    유통사_휴일r = newdf[['고객번호','휴일']].groupby('고객번호', as_index=False).mean()
+    유통사_휴일r = 유통사_휴일r.rename(columns = {'휴일':'휴일r'})
+    test = pd.merge(test, 유통사_휴일r, how='left', on='고객번호')
+    print('휴일 완료')
+    # 제휴사 비율
+    test2 = df[['고객번호', '제휴사']]
+    test2 = pd.get_dummies(test2, columns=['제휴사'])
+    test2 = test2.groupby(['고객번호'], as_index=False).sum()
+    test2['size'] = df.groupby(['고객번호'], as_index=False).size()['size'].copy()
+        # 제휴사가 nan 인 경우도 있음
+    test2['제휴사_A01'] = test2['제휴사_A01']/test2['size']
+    test2['제휴사_A02'] = test2['제휴사_A02']/test2['size']
+    test2['제휴사_A03'] = test2['제휴사_A03']/test2['size']
+    test2['제휴사_A04'] = test2['제휴사_A04']/test2['size']
+    test2['제휴사_A05'] = test2['제휴사_A05']/test2['size']
+    test2.drop('size', axis=1, inplace=True)
+    test = pd.merge(test, test2, how='left', on='고객번호')
+    print('제휴사 완료')
+    # 구매 횟수
+    test2 = df.groupby(['고객번호'], as_index=False).size()
+    df_유통사_고객별 = pd.merge(test, test2, how='left', on='고객번호')
+    print('구매 횟수 완료')
+    
+    ##-------코드합침--------
+    test = df.sort_values('고객번호')
+    #test.head()
+
+    # 채널 비율 계산
+    test2 = pd.get_dummies(test[['고객번호', '채널']], columns=['채널'])
+    #test2.head()
+
+    channel = test2.groupby(['고객번호'], as_index=False).sum()
+    channel['size'] = test2.groupby(['고객번호'], as_index=False).size()['size']
+    
+    # 계산이 제대로 되었는지 확인
+    if sum(channel['size'] != (channel['채널_1'] + channel['채널_2']))==0:
+        channel['채널_1'] = channel['채널_1'] / channel['size']
+        channel['채널_2'] = channel['채널_2'] / channel['size']
+        channel.drop(['size'], axis=1, inplace=True)
+        #display(channel)
+        
+        df_유통사_고객별 = pd.merge(df_유통사_고객별, channel, on='고객번호')
+        print('채널 완료')
+    else:
+        print('잘못되었다 삐리')
+
+    # 이용일자
+    test2 = test[['고객번호', '이용일자']]
+    test2['계절'] = test2['이용일자'].apply(lambda x: (int(str(x)[4:6])//4)+1)
+
+    test2 = pd.get_dummies(test2, columns=['계절']).rename(columns={'계절_1':'봄', '계절_2':'여름', '계절_3':'가을', '계절_4':'겨울'})
+    test2.drop('이용일자', axis=1, inplace=True)
+
+    season = test2.groupby(['고객번호'], as_index=False).sum()
+    season['size'] = test2.groupby(['고객번호'], as_index=False).size()['size']
+
+    if sum(season['size']!=season['봄']+season['여름']+season['가을']+season['겨울'])==0:
+        season['봄'] = season['봄']/season['size']
+        season['여름'] = season['여름']/season['size']
+        season['가을'] = season['가을']/season['size']
+        season['겨울'] = season['겨울']/season['size']
+        season.drop('size', axis=1, inplace=True)
+        #display(season)
+
+        df_유통사_고객별 = pd.merge(df_유통사_고객별, season, on='고객번호')
+        print('이용일자 -> 계절 완료')
+    else:
+        print('잘못되었다 삐리')
+
+    # 이용시간
+    test2 = test[['고객번호','이용시간']]
+    test2['이용시간'] = test2['이용시간'].apply(lambda x: (x//6)+1)
+
+    test2 = pd.get_dummies(test2, columns=['이용시간']).rename(columns={'이용시간_1':'새벽', '이용시간_2':'오전', '이용시간_3':'오후', '이용시간_4':'저녁'})
+    time = test2.groupby(['고객번호'], as_index=False).sum()
+    time['size'] = test2.groupby(['고객번호'], as_index=False).size()['size']
+
+    if sum(time['size']!=time['새벽']+time['오전']+time['오후']+time['저녁'])==0:
+        time['새벽'] = time['새벽']/time['size']
+        time['오전'] = time['오전']/time['size']
+        time['오후'] = time['오후']/time['size']
+        time['저녁'] = time['저녁']/time['size']
+        time.drop('size', axis=1, inplace=True)
+        #display(time)
+
+        df_유통사_고객별 = pd.merge(df_유통사_고객별, time, on='고객번호')
+        print('시간대 변경 완료')
+    else:
+        print('뭔가 잘못되었다 삐리삐리')
+
+    # 이용금액
+    test2 = test[['고객번호','이용금액']]
+    money = test2.groupby(['고객번호'], as_index=False).sum().rename(columns={'이용금액':'이용금액_총합'})
+    money['이용금액_평균'] = test2.groupby(['고객번호'], as_index=False).mean()['이용금액'].apply(lambda x: round(x, 2))
+    #display(money)
+    df_유통사_고객별 = pd.merge(df_유통사_고객별, money, on='고객번호')
+    print('이용금액 총합/평균 계산 완료')
+
+    return df_유통사_고객별
+
+
+import time
+start = time.time()
+df = df_고객별(df_유통사)
+print('\n 소요시간: ', time.time()-start,'초')
+
+df.columns
+
+df
+
+
